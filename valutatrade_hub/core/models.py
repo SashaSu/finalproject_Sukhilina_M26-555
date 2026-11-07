@@ -2,22 +2,28 @@ import hashlib
 import secrets
 from datetime import datetime
 
+from valutatrade_hub.core.exceptions import InsufficientFundsError
+
 
 def validate_username(username):
+    """Проверка имени пользователя"""
     if username.strip() == "":
         raise ValueError("Имя не может быть пустым")
 
 
 def validate_password(password):
+    """Проверка длины пароля"""
     if len(password) < 4:
         raise ValueError("Пароль должен быть не короче 4 символов")
 
 
 def generate_hash(password, salt):
+    """Проверка длины пароля"""
     return hashlib.sha256((password + salt).encode()).hexdigest()
 
 
 class User:
+    """Модель пользователя"""
     def __init__(self, user_id, username, password):
         validate_password(password)
         self._user_id = user_id
@@ -27,6 +33,7 @@ class User:
         self._registration_date = datetime.now()
 
     def get_user_info(self):
+        """Получение информации о пользователе"""
         return {
             "user_id": self._user_id,
             "username": self._username,
@@ -34,14 +41,17 @@ class User:
         }
 
     def change_password(self, new_password: str):
+        """Изменение пароля пользователя"""
         validate_password(new_password)
         self._salt = secrets.token_hex(8)
         self._hashed_password = generate_hash(new_password, self._salt)
 
     def verify_password(self, password: str):
+        """Проверка пароля пользователя"""
         return self._hashed_password == generate_hash(password, self._salt)
 
     def make_dict(self):
+        """Преобразование пользователя в словарь"""
         return {
             "user_id": self._user_id,
             "username": self._username,
@@ -50,23 +60,6 @@ class User:
             "registration_date": self._registration_date.isoformat()
         }
 
-    def parse_sell(parts):
-        if (len(parts) != 5 or parts[0] != "sell"
-                or parts[1] != "--currency"
-                or parts[3] != "--amount"):
-            raise ValueError("Неверный формат команды")
-
-        currency = parts[2].upper()
-
-        try:
-            amount = float(parts[4])
-        except ValueError:
-            raise ValueError("'amount' должен быть положительным числом")
-
-        if amount <= 0:
-            raise ValueError("'amount' должен быть положительным числом")
-
-        return currency, amount
     @property
     def username(self):
         return self._username
@@ -86,6 +79,7 @@ class User:
 
 
 def validate_balance(value):
+    """Проверка значения баланса"""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError("Некорректный тип данных")
     if value < 0:
@@ -93,6 +87,7 @@ def validate_balance(value):
 
 
 def validate_amount(amount):
+    """Проверка суммы операции"""
     if isinstance(amount, bool) or not isinstance(amount, (int, float)):
         raise TypeError("Сумма должна быть числом")
 
@@ -101,22 +96,25 @@ def validate_amount(amount):
 
 
 class Wallet:
+    """Модель валютного кошелька"""
     def __init__(self, currency_code: str, balance: float = 0.0):
         self.currency_code = currency_code
         self.balance = balance
 
     def deposit(self, amount: float):
+        """Пополнение кошелька"""
         validate_amount(amount)
         self._balance += amount
 
     def withdraw(self, amount: float):
+        """Снятие средств с кошелька"""
         validate_amount(amount)
-        if self._balance >= amount:
-            self._balance -= amount
-        else:
-            raise ValueError("Недостаточно средств")
+        if self._balance < amount:
+            raise InsufficientFundsError(self._balance, amount, self.currency_code)
+        self._balance -= amount
 
     def get_balance_info(self):
+        """Получение информации о балансе"""
         return {
             "currency_code": self.currency_code,
             "balance": self._balance,
@@ -133,6 +131,7 @@ class Wallet:
 
 
 class Portfolio:
+    """Модель валютного портфеля"""
     exchange_rates = {
         "USD": 1.0,
         "EUR": 1.08,
@@ -146,11 +145,13 @@ class Portfolio:
         self._wallets: dict[str, Wallet] = {}
 
     def add_currency(self, currency_code: str):
+        """Добавление валютного кошелька"""
         if currency_code in self._wallets:
             raise ValueError(f"Кошелёк {currency_code} уже существует")
         self._wallets[currency_code] = Wallet(currency_code)
 
     def get_total_value(self, base_currency="USD"):
+        """Расчёт общей стоимости портфеля"""
         base_rate = self.exchange_rates[base_currency]
         total = 0.0
         for currency_code, wallet in self._wallets.items():
@@ -161,6 +162,7 @@ class Portfolio:
         return total
 
     def get_wallet(self, currency_code):
+        """Получение кошелька по коду валюты"""
         return self._wallets[currency_code]
 
     @property

@@ -10,6 +10,8 @@ requires-python = ">=3.12"
 dependencies = [
     "prettytable>=3.18.0",
     "prompt>=0.4.1",
+    "python-dotenv>=1.2.4",
+    "requests>=2.34.2",
 ]
 
 [project.scripts]
@@ -35,3 +37,15 @@ ignore = []
 
 [tool.uv.build-backend]
 module-root = ""
+
+[tool.valutatrade]
+DATA_DIR = "data"
+USERS_FILE = "data/users.json"
+PORTFOLIOS_FILE = "data/portfolios.json"
+RATES_FILE = "data/rates.json"
+
+RATES_TTL_SECONDS = 300
+BASE_CURRENCY = "USD"
+
+LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+LOG_FILE = "logs/actions.log"

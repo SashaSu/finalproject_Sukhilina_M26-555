@@ -1,6 +1,11 @@
 import prompt
 from prettytable import PrettyTable
 
+from valutatrade_hub.core.exceptions import (
+    ApiRequestError,
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 from valutatrade_hub.core.usecases import (
     buy_currency,
     calc_portfolio,
@@ -10,6 +15,8 @@ from valutatrade_hub.core.usecases import (
     sell_currency,
     show_portfolio,
 )
+from valutatrade_hub.parser_service.storage import RatesStorage
+from valutatrade_hub.parser_service.updater import RatesUpdater
 
 
 def parse_register(parts):
@@ -35,9 +42,10 @@ def parse_show_portfolio(parts):
 
 
 def parse_buy(parts):
-    if (len(parts) != 5 or parts[1] != "--currency" or parts[3] != "--amount"):
+    if (len(parts) != 5 or parts[0] != "buy" or parts[1] != "--currency"
+            or parts[3] != "--amount"):
         raise ValueError("Неверный формат команды")
-    if len(parts[2]) != 3 or not parts[2].isalpha():
+    if not (2 <= len(parts[2]) <= 5) or not parts[2].isalpha():
         raise ValueError("Некорректный код валюты")
     currency = parts[2].upper()
     try:
@@ -53,6 +61,8 @@ def parse_sell(parts):
     if (len(parts) != 5 or parts[0] != "sell" or parts[1] != "--currency"
             or parts[3] != "--amount"):
         raise ValueError("Неверный формат команды")
+    if not (2 <= len(parts[2]) <= 5) or not parts[2].isalpha():
+        raise ValueError("Некорректный код валюты")
     currency = parts[2].upper()
     try:
         amount = float(parts[4])
@@ -134,7 +144,10 @@ def run():
                     print(f"- {currency}: было {old_balance:.4f} "
                           f"→ стало {new_balance:.4f}")
                     print(f"Оценочная стоимость покупки: {purchase_value:,.2f} USD")
-
+                except CurrencyNotFoundError as error:
+                    print(error)
+                    print("Проверьте код валюты. Доступные валюты: "
+                          "USD, EUR, RUB, BTC, ETH")
                 except ValueError as error:
                     print(error)
             case "sell":
@@ -150,6 +163,12 @@ def run():
                     print(f"- {currency}: было {old_balance:.4f} "
                           f"→ стало {new_balance:.4f}")
                     print(f"Оценочная выручка: {sale_value:,.2f} USD")
+                except InsufficientFundsError as error:
+                    print(error)
+                except CurrencyNotFoundError as error:
+                    print(error)
+                    print("Проверьте код валюты. Доступные валюты: USD, EUR, "
+                          "RUB, BTC, ETH")
                 except ValueError as error:
                     print(error)
             case "get-rate":
@@ -162,7 +181,56 @@ def run():
                           f"{rate:.8f} (обновлено: {updated_at})")
                     print(f"Обратный курс {currency_2}→{currency_1}: "
                           f"{reverse_rate:.2f}")
+                except CurrencyNotFoundError as error:
+                    print(error)
+                    print("Проверьте код валюты. Доступные валюты: USD, EUR, "
+                          "RUB, BTC, ETH")
+                except ApiRequestError as error:
+                    print(error)
+                    print("Попробуйте повторить запрос позже или "
+                          "проверьте подключение к сети")
                 except ValueError as error:
                     print(error)
+            case "update-rates":
+                try:
+                    updated_count = RatesUpdater().update()
+                    print(f"Курсы успешно обновлены. Получено записей: {updated_count}")
+                except ApiRequestError as error:
+                    print(error)
+                except (OSError, ValueError) as error:
+                    print(f"Ошибка сохранения курсов: {error}")
+            case "show-rates":
+                try:
+                    rates = RatesStorage().load_rates()
+
+                    table = PrettyTable()
+                    table.field_names = [
+                        "Валютная пара",
+                        "Курс",
+                        "Источник",
+                        "Обновлено",
+                    ]
+
+                    for pair, data in rates.items():
+                        if not isinstance(data, dict):
+                            continue
+
+                        if "rate" not in data:
+                            continue
+
+                        table.add_row([
+                            pair,
+                            data["rate"],
+                            data.get("source", "Неизвестно"),
+                            data.get("updated_at", "Неизвестно"),
+                        ])
+
+                    if table.rowcount == 0:
+                        print("Курсы ещё не загружены. Используйте update-rates")
+                    else:
+                        print(table)
+
+                except (OSError, ValueError, KeyError) as error:
+                    print(f"Не удалось прочитать курсы: {error}")
             case _:
                 print("Неизвестная команда")
